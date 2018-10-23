@@ -18,6 +18,7 @@ module.exports = {
         loader: 'vue-loader',
         options: {
           loaders: {
+            'sass': 'vue-style-loader!css-loader!sass-loader?indentedSyntax=1',
             'scss': 'vue-style-loader!css-loader!sass-loader',
           }
         }
@@ -29,6 +30,21 @@ module.exports = {
         options: {
           appendTsSuffixTo: [/\.vue$/],
         }
+      },
+      {
+        test: /\.css$/,
+        use: [
+          'vue-style-loader',
+          'css-loader'
+        ]
+      },
+      {
+        test: /\.scss$/,
+        use: [
+          'vue-style-loader',
+          'css-loader',
+          'sass-loader'
+        ]
       },
       {
         test: /\.(png|jpg|gif|svg)$/,
@@ -51,7 +67,6 @@ module.exports = {
   },
   devServer: {
     historyApiFallback: true,
-    noInfo: true
   },
   performance: {
     hints: false

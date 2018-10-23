@@ -1,6 +1,5 @@
 <template lang='pug'>
 .home
-  | TEST
   DomRenderer
 </template>
 
@@ -16,3 +15,10 @@ import DomRenderer from './components/DomRenderer.vue' // @ is an alias to /src
 export default class Home extends Vue {}
 
 </script>
+
+<style lang="scss" scoped>
+
+.home {
+  text-align: center;
+}
+</style>

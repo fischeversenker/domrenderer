@@ -7,11 +7,11 @@ export default class DOMRenderer {
   private height: number;
   private nodes: BaseType[] = [];
   private links: any[] = [];
-  private entryNodeSelector: string;
+  private entryNode: HTMLElement;
 
   color() {
     const scale = d3.scaleOrdinal(d3.schemeCategory10);
-    return (d: any) => scale(d.group);
+    return (d: any) => scale(d.size);
   }
 
   forceSimulation(nodes: any, links: any) {
@@ -33,13 +33,16 @@ export default class DOMRenderer {
 
       node.attr("cx", d => d.x)
           .attr("cy", d => d.y);
+
+      text.attr('x', d => d.x)
+          .attr('y', d => d.y + 3);
     }
 
-    const svg = d3.select('body')
+    const svg = d3.select(this.entryNode)
                   .append('svg')
                   .attr('width', this.width)
                   .attr('height', this.height)
-                  .attr("viewBox", `${-this.width / 2}, ${-this.height / 2}, ${this.width}, ${this.height}`);
+                  .attr("viewBox", `${-this.width * 2}, ${-this.height * 2}, ${this.width * 4}, ${this.height * 4}`);
 
     const link = svg.append("g")
         .attr("stroke", "#999")
@@ -57,13 +60,23 @@ export default class DOMRenderer {
       .selectAll("circle")
       .data(nodes)
       .enter().append("circle")
-        .attr("r", 5)
+        .attr("r", d => d.size)
         .attr("fill", this.color())
-        // TBD: fix this.
-        // .call(this.drag(simulation));
+        .call((this.drag(simulation) as any));
 
     node.append("title")
-        .text(d => d.id);
+        .text(d => d.name);
+
+    const text = svg.selectAll('text')
+        .data(nodes)
+        .enter()
+        .append('text');
+
+    text.attr('text-anchor', 'middle')
+        .text(d => d.name)
+        .attr('fill', 'black')
+        .attr('font-size', '12px')
+        .call((this.drag(simulation) as any));
 
     return svg.node();
   }
@@ -93,54 +106,12 @@ export default class DOMRenderer {
         .on("end", dragended);
   }
 
-  getLevelNodes(node: any) {
-    return [ ...node.parentNode.children ];
-  }
-
-  getChildIndex(node: any) {
-    return this.getLevelNodes(node).indexOf(node);
-  }
-
-  tagNodeName(node: any) {
-    node.innerHTML = node.nodeName + node.innerHTML;
-  }
-
-  clearInside(node: any) {
-    [...node.childNodes].forEach(child => {
-      if (child.nodeName === '#text') {
-        child.remove();
-      }
-    })
-  }
-
-  handleImage(node: any) {
-    if (node.nodeName === 'IMG') {
-      node.src = '';
-      node.alt = 'IMG';
-    }
-  }
-
-  walk(node: any, cb: any) {
-    cb(node)
-    if (node.children.length) {
-      this.walk(node.children[0], cb);
-    }
-    if (node.nextElementSibling) {
-      this.walk(node.nextElementSibling, cb);
-    }
-  }
-
-  init() {
-    d3.forceSimulation(this.nodes as SimulationNodeDatum[]);
-  }
-
-  constructor(node: string, nodes: BaseType[], links: any[]) {
-    this.width = 600;
-    this.height = 600;
-    this.entryNodeSelector = node;
+  constructor(width: number, height: number, node: HTMLElement, nodes: BaseType[], links: any[]) {
+    this.width = width;
+    this.height = height;
+    this.entryNode = node;
     this.nodes = nodes;
     this.links = links;
-    this.init();
   }
 
 }

@@ -1,79 +1,59 @@
 <template lang="pug">
 .dom-renderer
-  | Funzt das noch?
 </template>
 
 <script lang="ts">
 import Vue from 'vue';
 import { Component } from 'vue-property-decorator';
-import { BaseType, SimulationNodeDatum, Selection } from 'd3';
 
+import mock from '../mock';
 import Renderer from './renderer';
-
-const NODES = [
-  {
-    "id": 1,
-    "group": 1
-  }, {
-    "id": 2,
-    "group": 1
-  }, {
-    "id": 3,
-    "group": 2
-  }, {
-    "id": 4,
-    "group": 2
-  },
-];
-const LINKS = [
-  {
-    "source": 2,
-    "target": 1,
-    "value": 28
-  }, {
-    "source": 3,
-    "target": 1,
-    "value": 8
-  }, {
-    "source": 4,
-    "target": 1,
-    "value": 10
-  }, {
-    "source": 4,
-    "target": 3,
-    "value": 6
-  },
-];
 
 @Component
 export default class DomRenderer extends Vue {
 
+  private nodes: Array<any> = [];
+  private links: Array<any> = [];
+
   mounted() {
-    console.log('DOmRenderer created');
+    this.init();
+  }
 
-    // const $el = (window as any).tree;
-    // console.log($el);
-    // this.walk($el.children[0], (node: any) => {
-    //   this.nodes.push(node);
-    //   // TBD
-    //   // var levelNodes = getLevelNodes(node)
-    //   // var childIndex = getChildIndex(node)
-    //   // var width = 90 / levelNodes.length
-    //   // var leftSlice = 100 / levelNodes.length
-    //   // var left = leftSlice * childIndex
-    //   // clearInside(node)
-    //   // tagNodeName(node)
-    //   // handleImage(node)
-    //   // node.style.cssText += `;
-    //   //   width: ${width}%;
-    //   //   left: ${left}%;
-    //   // `
-    // });
+  init() {
+    const parser = new DOMParser();
+    const parsedDocument = parser.parseFromString(mock, "text/html");
 
+    this.walk(parsedDocument.documentElement, (node: HTMLElement) => {
+      const nodeId = this.nodes.length;
+      const nodeChildCount = this.getNodeChildCount(node);
+      this.nodes.push({
+        node,
+        id: nodeId,
+        name: `${node.tagName} - ${Array.from(node.classList).join(',')}`,
+        group: 1,
+        size: 4 + nodeChildCount,
+      });
+      const parentNode = this.nodes.find((otherNode: any) => otherNode.node === node.parentElement);
+      if (parentNode) {
+        this.links.push({
+          source: nodeId,
+          target: parentNode.id,
+          value: 2 + nodeChildCount * 2,
+        });
+      }
+    });
 
-    // TBD: pass element to attach canvas to
-    const renderer = new Renderer('.dom-renderer', (NODES as any[]), LINKS);
+    const renderer = new Renderer(window.innerWidth, window.innerHeight, this.$el, (this.nodes as any[]), this.links);
     renderer.getChart();
+  }
+
+  walk(node: any, cb: any) {
+    cb(node);
+    [...node.children].forEach(node => this.walk(node, cb));
+  }
+
+  getNodeChildCount(node: HTMLElement): number {
+    return Array.from(node.children).reduce((acc: number, otherNode: Element) => acc + this.getNodeChildCount(otherNode as HTMLElement), node.childElementCount);
   }
 
 }
