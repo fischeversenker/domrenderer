@@ -4,11 +4,11 @@
     label nodeScaleFactor {{ rawInputs.nodeScaleFactor }}
     input(type='range', v-model='rawInputs.nodeScaleFactor', :min='ranges.nodeScaleFactor.min', :max='ranges.nodeScaleFactor.max', :step='ranges.nodeScaleFactor.step')
     label linkScaleFactor {{ rawInputs.linkScaleFactor }}
-    input(type='range', disabled, v-model='rawInputs.linkScaleFactor', :min='ranges.linkScaleFactor.min', :max='ranges.linkScaleFactor.max', :step='ranges.linkScaleFactor.step')
+    input(type='range', v-model='rawInputs.linkScaleFactor', :min='ranges.linkScaleFactor.min', :max='ranges.linkScaleFactor.max', :step='ranges.linkScaleFactor.step')
     label fontSize {{ rawInputs.fontSize }}
     input(type='range', v-model='rawInputs.fontSize', :min='ranges.fontSize.min', :max='ranges.fontSize.max', :step='ranges.fontSize.step')
 
-    .dom-renderer__inputs-block
+    .dom-renderer__inputs-block(v-if='false')
       label viewBoxX1 {{ rawInputs.viewBoxX1 }}
       input(type='range', v-model='rawInputs.viewBoxX1', :min='ranges.viewBoxX1.min', :max='ranges.viewBoxX1.max', :step='ranges.viewBoxX1.step')
       label viewBoxY1 {{ rawInputs.viewBoxY1 }}
@@ -35,40 +35,72 @@ import throttle from 'lodash.throttle';
 
 import mock from '../mock';
 
-const FRAME_LENGTH = 100;
+const FRAME_LENGTH = 20;
+
+const WIDTH = 800;
+const HEIGHT = 400;
+
+interface DRNode {
+  element: HTMLElement;
+  label: string;
+  group: number;
+  size: number;
+  childCount: number;
+  parentCount: number;
+  fixed: boolean;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number | null;
+  fy?: number | null;
+}
+
+interface DRLink {
+  source: number;
+  target: number;
+  index: number;
+}
+
+// IDEA #######################
+// make this a browser plugin to always inspect the currently viewed page
+// plugin like elements in chrome dev console
 
 @Component
 export default class DomRenderer extends Vue {
 
-  private nodes: any[] = [];
+  private svg: any;
+  private text: any;
+  private nodes: DRNode[] = [];
   private links: any[] = [];
   private width: number = 0;
   private height: number = 0;
+  private zoom: any = null;
 
-  private node: any;
-  private link: any;
+  private graphUnion: any = null;
+  private node: any = null;
+  private link: any = null;
   private parser: DOMParser = new DOMParser();
   private simulation: d3.Simulation<any, undefined> | null = null;
-  private tick: () => void = () => void(0);
 
   private lastReset = 0;
 
   private rawInputs: any = {
-    nodeScaleFactor: 2,
+    nodeScaleFactor: 1,
     linkScaleFactor: 1,
     fontSize: 14,
-    viewBoxX1: -400,
-    viewBoxY1: -200,
-    viewBoxX2: 800,
-    viewBoxY2: 800,
+    viewBoxX1: 0,
+    viewBoxY1: 0,
+    viewBoxX2: WIDTH,
+    viewBoxY2: HEIGHT,
     showLabels: true,
-    labelDepth: 4,
+    labelDepth: 2,
   };
 
   private ranges: any = {
     nodeScaleFactor: {
-      min: 0,
-      max: 10,
+      min: 0.1,
+      max: 5,
       step: 0.1,
     },
     linkScaleFactor: {
@@ -124,19 +156,24 @@ export default class DomRenderer extends Vue {
   }
 
   mounted() {
-    this.width = 800;
-    this.height = 800;
+    this.width = WIDTH;
+    this.height = HEIGHT;
     this.reset();
     this.start();
+    this.zoom = d3.zoom();
   }
 
   reset() {
     const parsedDocument = this.parser.parseFromString(mock, "text/html");
-    const { nodes, links } = this.getNodesAndLinks(parsedDocument.documentElement);
-    this.node && this.node.remove && this.node.remove();
-    this.link && this.link.remove && this.link.remove();
+    const { nodes, links } = this.getNodesAndLinks(document.documentElement);
     this.nodes = nodes;
     this.links = links;
+
+    if (this.node && this.link && this.text) {
+      this.node.remove();
+      this.link.remove();
+      this.text.remove();
+    }
   }
 
   getNodesAndLinks(element: HTMLElement) {
@@ -147,7 +184,7 @@ export default class DomRenderer extends Vue {
     this.walk(element, (el: HTMLElement) => {
       const nodeId = nodes.length;
       el.dataset.nodeId = String(nodeId);
-      nodes.push(this.transformNode(el, nodes.length, el.childElementCount));
+      nodes.push(this.transformNode(el));
     });
 
     // gather links
@@ -160,24 +197,37 @@ export default class DomRenderer extends Vue {
     return { nodes, links };
   }
 
-  transformNode(element: HTMLElement, nodeId: number, nodeChildCount: number) {
-    return {
-      element,
-      id: nodeId,
-      name: `${element.tagName} - ${Array.from(element.classList).join(', ')}`,
-      group: 1,
-      size: (4 + nodeChildCount) * this.inputs.nodeScaleFactor,
-      childCount: nodeChildCount,
-      parentCount: this.getParentCount(element),
-    };
-  }
-
   transformLink(source: number, target: number) {
     return {
       source,
       target,
       weight: 4,
     };
+  }
+
+  transformNode(element: HTMLElement): DRNode {
+    const fixed = this.getParentCount(element) === 0;
+    return {
+      element,
+      fixed,
+      label: this.getElementLabel(element),
+      group: 1,
+      size: 4 + element.childElementCount,
+      childCount: element.childElementCount,
+      parentCount: this.getParentCount(element),
+      x: this.width / 2,
+      y: this.height / 2,
+      fx: fixed ? 0 : null,
+      fy: fixed ? 0 : null,
+    };
+  }
+
+  getElementLabel(element: HTMLElement): string {
+    let label = `${element.tagName.toLowerCase()}`;
+    if (element.classList.length) {
+      label += ` || ${Array.from(element.classList).join(', ')}`;
+    }
+    return label;
   }
 
   getParentCount(node: HTMLElement, acc: number = -1): number {
@@ -196,87 +246,92 @@ export default class DomRenderer extends Vue {
 
   color() {
     const scale = d3.scaleOrdinal(d3.schemeCategory10);
-    return (d: any) => scale(d.size);
+    return (d: any) => scale(d.childCount);
   }
 
   forceSimulation(nodes: any, links: any) {
     return d3.forceSimulation(nodes)
-        .force("link", d3.forceLink(links).id((d: any) => d.id))
+        .force("link", d3.forceLink(links).id((d: any) => d.index))
         .force("charge", d3.forceManyBody())
         .force("center", d3.forceCenter());
   }
 
+  tick() {
+    this.svg.attr("viewBox", (d: any) => `${this.inputs.viewBoxX1}, ${this.inputs.viewBoxY1}, ${this.inputs.viewBoxX2}, ${this.inputs.viewBoxY2}`);
+
+    this.link
+        .attr("x1", (d: any) => d.source.x)
+        .attr("y1", (d: any) => d.source.y)
+        .attr("x2", (d: any) => d.target.x)
+        .attr("y2", (d: any) => d.target.y);
+
+    this.node
+        .attr('cx', (d: any) => d.x)
+        .attr('cy', (d: any) => d.y)
+        .attr('r', (d: any) => d.size * this.inputs.nodeScaleFactor);
+
+    this.text
+        .classed('label--hidden', (d: any) => d.parentCount > this.inputs.labelDepth || !this.rawInputs.showLabels);
+
+    this.text.selectAll('text')
+        .attr('x', (d: any) => d.x + this.inputs.fontSize / 2)
+        .attr('y', (d: any) => d.y + this.inputs.fontSize + this.inputs.fontSize / 4)
+        .attr('font-size', (d: any) => this.inputs.fontSize);
+
+    this.text.selectAll('rect')
+        .attr('x', (d: any) => d.x)
+        .attr('y', (d: any) => d.y)
+        .attr('width', 60 + this.inputs.fontSize * 10)
+        .attr('height', this.inputs.fontSize * 2);
+  }
+
   start() {
-    const links = this.links.map(d => Object.create(d));
-    const nodes = this.nodes.map(d => Object.create(d));
-
-    const ticked = () => {
-
-      svg.attr("viewBox", d => `${this.inputs.viewBoxX1}, ${this.inputs.viewBoxY1}, ${this.inputs.viewBoxX2}, ${this.inputs.viewBoxY2}`);
-
-      link.attr("x1", d => d.source.x)
-          .attr("y1", d => d.source.y)
-          .attr("x2", d => d.target.x)
-          .attr("y2", d => d.target.y);
-
-      node.attr("cx", d => d.x)
-          .attr("cy", d => d.y)
-          .attr("r", d => (2 + d.childCount) * this.inputs.nodeScaleFactor);
-
-      text.attr('x', d => d.x)
-          .attr('y', d => d.y + 3)
-          .attr('font-size', d => `${this.inputs.fontSize}px`)
-          .classed('label--hidden', d => d.parentCount > this.inputs.labelDepth || !this.rawInputs.showLabels);
-    }
-
-    this.tick = () => ticked();
-
-    const svg = d3.select(this.$refs.canvas as BaseType)
+    this.svg = d3.select(this.$refs.canvas as BaseType)
                   .append('svg')
                   .attr('width', this.width)
                   .attr('height', this.height)
-                  .attr('preserveAspectRatio', 'xMinYMin meet')
-                  .attr("viewBox", d => `${this.inputs.viewBoxX1}, ${this.inputs.viewBoxY1}, ${this.inputs.viewBoxX2}, ${this.inputs.viewBoxY2}`);
+                  .attr('preserveAspectRatio', 'xMinYMin meet');
 
-    const link = svg.append("g")
-        .attr("stroke", "#999")
-        .attr("stroke-opacity", 0.6)
-      .selectAll("line")
-      .data(links)
-      .enter().append("line")
-        .attr("stroke-width", d => 2);
+    this.simulation = this.forceSimulation(this.nodes, this.links)
+        .on('tick', throttle(this.tick.bind(this), FRAME_LENGTH));
 
-    this.link = link;
+    this.link = this.svg.append('g')
+          .classed('links', true)
+          .attr("transform", `translate(${this.width / 2}, ${this.height / 2})`)
+        .selectAll('line')
+        .data(this.links)
+        .enter().append('line')
+          .classed('link', true);
 
-    this.simulation = this.forceSimulation(nodes, links).on("tick", throttle(ticked, FRAME_LENGTH));
-
-    const node = svg.append("g")
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 1.5)
-      .selectAll("circle")
-      .data(nodes)
-      .enter().append("circle")
-        .attr("r", d => d.size)
-        .attr("fill", this.color())
+    this.node = this.svg.append('g')
+        .classed('nodes', true)
+        .attr('transform', `translate(${this.width / 2}, ${this.height / 2})`)
+      .selectAll('circle')
+      .data(this.nodes)
+      .enter().append('circle')
+        .classed('node', true)
+        .attr('fill', this.color())
         .call((this.drag() as any));
 
-    node.append("title")
-        .text(d => d.name);
+    this.node.append("title")
+        .text((d: any) => d.label);
 
-    this.node = node;
+    this.text = this.svg.append('g')
+        .classed('texts', true)
+        .attr('transform', `translate(${this.width / 2}, ${this.height / 2})`)
+      .selectAll('g')
+      .data(this.nodes)
+      .enter().append('g')
+        .classed('text-group', true);
 
-    const text = svg.selectAll('text')
-        .data(nodes)
-        .enter()
-        .append('text');
+    this.text.append('rect')
+      	.attr('class', 'rect');
 
-    text.attr('text-anchor', 'middle')
-        .text(d => d.name)
-        .attr('fill', 'white')
-        .attr('font-size', d => `${this.inputs.fontSize}px`)
-        .call((this.drag() as any));
+    this.text.append('text')
+      	.attr('class', 'text')
+        .text((d: any) => d.label)
 
-    return svg.node();
+    return this.svg.node();
   }
 
   drag() {
@@ -294,8 +349,10 @@ export default class DomRenderer extends Vue {
 
     const dragended = (d: any) => {
       if (!d3.event.active) (this.simulation as any).alphaTarget(0);
-      d.fx = null;
-      d.fy = null;
+      if (!d.fixed) {
+        d.fx = null;
+        d.fy = null;
+      }
     };
 
     return d3.drag()
@@ -307,14 +364,44 @@ export default class DomRenderer extends Vue {
 }
 </script>
 
-<style scoped>
+<style>
 .dom-renderer {
   display: grid;
   grid-template-columns: 1fr 6fr;
-  justify-content: left
+  justify-content: left;
 }
 
-/deep/ .label--hidden {
+.dom-renderer__canvas {
+  outline: 1px solid white;
+}
+
+.text-group {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.text-group .text {
+  fill: white;
+}
+
+.text-group .rect {
+  stroke: white;
+  stroke-opacity: 0.6;
+  stroke-width: 1px;
+  fill: rebeccapurple;
+}
+
+.link {
+  stroke: white;
+  stroke-width: 2;
+}
+
+.node {
+  stroke: white;
+  stroke-width: 2;
+}
+
+.label--hidden {
   opacity: 0;
 }
 </style>
