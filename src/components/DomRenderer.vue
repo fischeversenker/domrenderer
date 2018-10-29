@@ -17,7 +17,7 @@ import throttle from 'lodash.throttle';
 import mock from '../mock2';
 
 import { DRNode, DRLink, DRRenderer } from './renderer';
-import DRRendererD3 from './rendererD3';
+import DRRendererD3Force from './rendererD3Force';
 import DRRendererSVG from './rendererSVG';
 
 const FRAME_LENGTH = 20;
@@ -32,7 +32,7 @@ export default class DomRenderer extends Vue {
   private width: number = 0;
   private height: number = 0;
 
-  private renderer: DRRenderer = new DRRendererD3();
+  private renderer: DRRenderer = new DRRendererD3Force(document.documentElement);
 
   private parser: DOMParser = new DOMParser();
 
@@ -94,10 +94,6 @@ export default class DomRenderer extends Vue {
 
   reset() {
     this.renderer.reset();
-    this.renderer.setup(this.$refs.canvas as HTMLElement, {
-      width: this.width,
-      height: this.height,
-    });
   }
 
   start() {

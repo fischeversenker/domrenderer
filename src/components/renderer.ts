@@ -1,11 +1,11 @@
 export interface DRRenderer {
-  setup: (container: HTMLElement, config?: any) => void;
-  render: (nodes: DRNode[], links: DRLink[]) => void;
-  setConfig: (config: any) => void;
+  constructor: Function;
+  render(nodes: DRNode[], links: DRLink[]): void;
+  reset(): void;
+  setConfig(config?: any): void;
   update: () => void;
-  transformNode: (element: HTMLElement) => DRNode;
-  transformLink: (source: number, target: number) => DRLink;
-  reset: () => void;
+  transformNode(element: HTMLElement): DRNode;
+  transformLink(source: number, target: number): DRLink;
   configurableOptions?: any;
 }
 
