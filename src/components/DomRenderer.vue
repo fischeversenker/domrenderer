@@ -5,6 +5,9 @@
       label(:for='`renderer-input-${index}`') {{ option.label }} {{ inputs[option.key] }}
       input(:type='option.type', :id='`renderer-input-${index}`', v-model='inputs[option.key]', v-bind.once='attributesFor(option)')
 
+    select(@change='onRendererChanged($event.target.value)')
+      option(v-for='renderer in availableRenderers', :value='renderer') {{ renderer }}
+
   .dom-renderer__canvas(ref='canvas')
 </template>
 
@@ -39,6 +42,10 @@ export default class DomRenderer extends Vue {
   private lastReset = 0;
 
   private inputs: any = {};
+
+  private availableRenderers = [
+    'D3Force', 'SVG',
+  ];
 
   @Watch('inputs', { deep: true })
   inputChanged() {
@@ -100,6 +107,22 @@ export default class DomRenderer extends Vue {
     const parsedDocument = this.parser.parseFromString(mock, "text/html");
     const { nodes, links } = this.getNodesAndLinks(parsedDocument.documentElement);
     this.renderer.render(nodes, links);
+  }
+
+  onRendererChanged(newRenderer: string) {
+    this.renderer.reset();
+    switch (newRenderer) {
+      case 'SVG':
+        this.renderer = new DRRendererSVG();
+        break;
+      case 'D3Force':
+        this.renderer = new DRRendererD3Force(document.documentElement);
+        break;
+      // case 'D3Tree':
+      //   this.renderer = new DRRendererD3Tree();
+      //   break;
+    }
+    this.start();
   }
 
   getNodesAndLinks(baseElement: HTMLElement) {
